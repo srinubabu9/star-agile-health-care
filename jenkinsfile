@@ -1,0 +1,45 @@
+pipeline {
+    agent { label 'slave1' }
+    stages {
+        stage('scm checkout') {
+            steps {
+                git 'https://github.com/srinubabu9/star-agile-health-care.git'
+            }
+        }
+        stage ('mvn build') {
+            steps {
+                sh 'mvn clean package'
+            }
+        }
+        stage('test results') {
+            steps {
+                publishHTML([allowMissing: false, alwaysLinkToLastBuild: false, keepAll: false, reportDir: '/home/sri/workspace/healthcare/target/surefire-reports', reportFiles: 'index.html', reportName: 'HTML Report', reportTitles: '', useWrapperFileDirectly: true])
+            }
+        }
+        stage ('docker image build') {
+            steps {
+                sh 'docker build -t srinubabuthammisetti/healthcare .'
+                sh 'docker images'
+            }
+        }
+        stage('docker login') {
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'MY_DOCKER', passwordVariable: 'DOCKER_PASSWD', usernameVariable: 'DOCKER_USER')]) { 
+                sh 'docker login -u ${DOCKER_USER} -p ${DOCKER_PASSWD}'
+                }
+            }
+        }
+        stage('docker image push to hub') {
+           steps {
+                sh 'docker push srinubabuthammisetti/healthcare'
+           }
+        }
+        stage('deploy to kube environment') {
+            steps {
+             script {
+                 sshPublisher(publishers: [sshPublisherDesc(configName: 'kube-cluster', transfers: [sshTransfer(cleanRemote: false, excludes: '', execCommand: 'kubectl create -f kubernetes-deployment.yml', execTimeout: 120000, flatten: false, makeEmptyDirs: false, noDefaultExcludes: false, patternSeparator: '[, ]+', remoteDirectory: '.', remoteDirectorySDF: false, removePrefix: '', sourceFiles: 'kubernetes-deployment.yml')], usePromotionTimestamp: false, useWorkspaceInPromotion: false, verbose: false)])
+                 }  
+             }
+        }
+    }
+}
